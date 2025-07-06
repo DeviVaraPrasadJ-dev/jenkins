@@ -19,7 +19,7 @@ A beautiful and extremely lightweight Java 21 web application packaged as a `.wa
 
 ```bash
 # Navigate to the project directory
-cd jenkins/java-tomcat-21
+cd jenkins/javaapp-tomcat
 
 # Clean and build the project to create a WAR file
 mvn clean package
