@@ -56,4 +56,4 @@ cp target/artisantek-app.war $TOMCAT_HOME/webapps/
 - Tomcat 9+ (for WAR deployment)
 
 ---
-*Perfect for DevOps training, Jenkins job creation, and CI/CD pipeline examples.*
+*Perfect for DevOps training, Jenkins job creation, and CI/CD pipeline examples.*Testing dev branch
