@@ -94,6 +94,7 @@ pipeline {
         }
       }
     }
+    stage('Discord notification'){
      post {
     success {
       withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
@@ -116,5 +117,6 @@ pipeline {
       } 
     }
  }
+    }
   }
 }
