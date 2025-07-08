@@ -1,0 +1,86 @@
+pipeline {
+  agent { label 'agent' }
+   stages {
+      stage('Checkout') {
+        steps {
+          git changelog: false, credentialsId: 'sshCredTomcat', poll: false, url: 'https://github.com/DeviVaraPrasadJ-dev/jenkins.git'
+          }
+        }
+
+    stage('Tests') {
+      parallel {      
+        stage('Unit Test') {
+         steps {
+            dir('javaapp-pipeline') {
+                sh'mvn clean test'
+            }
+        }
+    }
+      //   stage('Trivy scan') {
+      //     steps {
+      //         dir('javaapp-pipeline'){
+      //            sh'''
+      //              wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -O html.tpl
+      //              trivy fs --format template --template "@html.tpl" -o report.html .
+      //               '''
+      //             }   
+      //           }
+      //          }
+      //     } 
+      // }
+  //       stage('Sonar Analysis') {
+  //         steps {
+  //             dir('javaapp-pipeline'){
+                  
+	//               withSonarQubeEnv('sonar'){
+	// 	              sh '''
+	//             	    mvn clean verify sonar:sonar\
+  //                   -Dsonar.projectKey=java-app \
+  //                   -Dsonar.projectName=java-app
+  //                   '''
+  //           }
+  //       }
+  //   }
+  // }
+         stage('Build') {
+           steps {
+               dir('javaapp-pipeline'){
+                   sh  'mvn clean package -DskipTests'
+        }
+    }
+  }
+
+  stage('Deploy') {
+    steps {
+        dir('javaapp-pipeline/target'){
+        sh '''
+
+          echo "Starting app..."
+          nohup java -jar java-sample-21-1.0.0.jar > app.log 2>&1 &
+          
+          # Wait a bit for the app to boot up
+          sleep 5
+
+                  echo "Checking if process is running..."
+          if pgrep -f java-sample-21-1.0.0.jar; then
+            echo " Process is running" 
+          else
+            echo "Process is NOT running" 
+            tail -n 20 app.log
+            exit 1
+          fi
+
+          echo "Checking if port 5000 is listening..."
+          if ss -tuln | grep -q ':5000'; then
+            echo " Port 5000 is open" 
+          else
+            echo "Port 5000 is NOT open" 
+            tail -n 20 app.log
+            exit 1
+          fi
+      '''
+        }
+    }
+  }
+}
+}
