@@ -94,5 +94,27 @@ pipeline {
         }
       }
     }
+     post {
+    success {
+      withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
+        sh '''
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d '{"content": " *Build Success!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
+          $DISCORD_URL
+        '''
+      }
+    }
+    failure {
+      withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
+        sh '''
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d '{"content": "*Build Failed!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
+          $DISCORD_URL
+        '''
+      } 
+    }
+ }
   }
 }
