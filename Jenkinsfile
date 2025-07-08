@@ -95,7 +95,7 @@ pipeline {
       }
     }
     stage('Discord notification'){
-      step{
+      steps{
      post {
     success {
       withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
