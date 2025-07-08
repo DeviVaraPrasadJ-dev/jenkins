@@ -95,6 +95,7 @@ pipeline {
       }
     }
     stage('Discord notification'){
+      step{
      post {
     success {
       withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
@@ -114,6 +115,7 @@ pipeline {
           -d '{"content": "*Build Failed!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
           $DISCORD_URL
         '''
+      }
       } 
     }
  }
