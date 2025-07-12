@@ -4,7 +4,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/artisantek/jenkins.git'
+                git url: 'https://github.com/DeviVaraPrasadJ-dev/jenkins.git'
             }
         }
 
@@ -52,32 +52,28 @@ pipeline {
             }
         }
 
-        stage('Publish') {
-            steps {
+         stage('Publish') {
+              agent { label 'agent2' } 
+              steps {
                 script {
-                    def GROUP_ID = sh(script: "mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
-                    def ARTIFACT_ID = sh(script: "mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
-                    def VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
-                    def GROUP_PATH = sh(script: "echo '${GROUP_ID}' | tr '.' '/'", returnStdout: true).trim()
-                    def TARGET_PATH = "maven/${GROUP_PATH}/${ARTIFACT_ID}/${VERSION}/"
-                    def JAR_PATH = "${ARTIFACT_ID}-${VERSION}.jar"
+                  dir('javaapp-tomcat/target') {
+                    sh 'echo "Files in target:" && ls -lh'
         
-                    dir('javaapp-pipeline/target') {
-                        rtUpload(
-                            serverId: 'jfrog',
-                            spec: """{
-                                "files": [
-                                    {
-                                        "pattern": "${JAR_PATH}",
-                                        "target": "${TARGET_PATH}"
-                                    }
-                                ]
-                            }"""
-                        )
-                    }
+                    rtUpload(
+                      serverId: 'jfrog',
+                      spec: '''{
+                        "files": [
+                          {
+                            "pattern": "artisantek-app.war",
+                            "target": "maven/com/artisantek/java-tomcat-21/1.0.1/"
+                          }
+                        ]
+                      }'''
+                    )
+                  }
                 }
+              }
             }
-        }
 
         stage('Deploy') {
             steps {
@@ -98,13 +94,26 @@ pipeline {
     }
     
     post {
-      always {
-        cleanWs()
+    success {
+      withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
+        sh '''
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d '{"content": "*Build Success!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
+          $DISCORD_URL
+        '''
       }
-      failure {
-        emailext attachLog: true, body: 'Pipeline Failed, Please check the logs', subject: 'Job Failed', to: 'artisantek.adithya@gmail.com'
+    }
+    failure {
+      withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
+        sh '''
+          curl -H "Content-Type: application/json" \
+          -X POST \
+          -d '{"content": "*Build Failed!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
+          $DISCORD_URL
+        '''
       }
     }
 
-
+    }
 }
