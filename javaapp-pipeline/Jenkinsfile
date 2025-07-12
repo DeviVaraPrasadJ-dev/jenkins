@@ -99,7 +99,7 @@ pipeline {
         sh '''
           curl -H "Content-Type: application/json" \
           -X POST \
-          -d '{"content": "*Build Success!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
+          -d "{"content": "*Build Success!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}" \
           $DISCORD_URL
         '''
       }
@@ -109,7 +109,7 @@ pipeline {
         sh '''
           curl -H "Content-Type: application/json" \
           -X POST \
-          -d '{"content": "*Build Failed!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
+          -d "{"content": "*Build Failed!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}" \
           $DISCORD_URL
         '''
       }
