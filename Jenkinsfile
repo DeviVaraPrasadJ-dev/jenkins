@@ -15,7 +15,6 @@ pipeline {
 
     stage('Build & Test') {
       when {
-//to run mvn command to create package
         branch 'master'
       }
       steps {
@@ -26,7 +25,6 @@ pipeline {
     }
 
     stage('Test only for dev') {
-//to only run mvn till test 
       when {
         branch 'dev'
       }
@@ -94,15 +92,15 @@ pipeline {
         }
       }
     }
-    stage('Discord notification'){
-      steps{
-     post {
+  }
+
+  post {
     success {
       withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
         sh '''
           curl -H "Content-Type: application/json" \
           -X POST \
-          -d '{"content": " *Build Success!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
+          -d '{"content": "*Build Success!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}' \
           $DISCORD_URL
         '''
       }
@@ -116,9 +114,6 @@ pipeline {
           $DISCORD_URL
         '''
       }
-      } 
-    }
- }
     }
   }
 }
