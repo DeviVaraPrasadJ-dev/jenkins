@@ -20,7 +20,7 @@ pipeline {
         stage('Build & Test') {
             agent { label 'sonar-trivy-agent' }
             steps {
-                dir('javaapp-standalone') {
+                dir('javaapp-pipeline') {
                     sh 'mvn clean package'
                     sh 'mvn test'
                 }
@@ -31,7 +31,7 @@ pipeline {
             agent { label 'sonar-trivy-agent' }
             steps {
                 withSonarQubeEnv('sonar') {
-                    dir('javaapp-standalone') {
+                    dir('javaapp-pipeline') {
                         sh '''
                           mvn sonar:sonar \
                             -Dsonar.projectKey=myapp \
@@ -39,7 +39,7 @@ pipeline {
                         '''
                     }
                 }
-                dir('javaapp-standalone') {
+                dir('javaapp-pipeline') {
                     sh 'trivy fs --exit-code 0 --severity HIGH,CRITICAL .'
                 }
             }
@@ -55,7 +55,7 @@ pipeline {
         stage('Build Docker Image') {
             agent { label 'docker-agent' }
             steps {
-                dir('javaapp-standalone') {
+                dir('javaapp-pipeline') {
                     sh "docker build -t ${IMAGE_URI} ."
                 }
             }
