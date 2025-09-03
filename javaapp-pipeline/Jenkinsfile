@@ -96,7 +96,7 @@ pipeline {
         }
 
         stage('Deploy from ECR') {
-            agent { 
+            agent {
                 label 'docker-agent'
             }
             steps  {
