@@ -54,20 +54,24 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Image & Trivy Scan') {
             agent { label 'docker-agent' }
             steps {
                 dir('javaapp-pipeline') {
                     unstash 'built-jar'
                     sh "docker build -t ${IMAGE_URI} ."
+                    
+                    // Install Trivy on docker-agent if not present
+                    sh '''
+                        if ! command -v trivy &> /dev/null; then
+                            echo "Installing Trivy..."
+                            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+                        fi
+                    '''
+                    
+                    // Run Trivy scan on the locally built image
+                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_URI}"
                 }
-            }
-        }
-
-        stage('Trivy Image Scan') {
-            agent { label 'sonar-trivy-agent' }
-            steps {
-                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_URI}"
             }
         }
 
@@ -96,7 +100,6 @@ pipeline {
         }
 
         stage('Deploy from ECR') {
-           
             agent {
                 label 'docker-agent'
             }
