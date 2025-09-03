@@ -23,6 +23,8 @@ pipeline {
                 dir('javaapp-pipeline') {
                     sh 'mvn clean package'
                     sh 'mvn test'
+                    stash includes: 'target/java-sample-21-1.0.0.jar', name: 'built-jar'
+
                 }
             }
         }
@@ -56,6 +58,7 @@ pipeline {
             agent { label 'docker-agent' }
             steps {
                 dir('javaapp-pipeline') {
+                    unstash 'built-jar'
                     sh "docker build -t ${IMAGE_URI} ."
                 }
             }
