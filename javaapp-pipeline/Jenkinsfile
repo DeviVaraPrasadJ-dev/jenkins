@@ -122,20 +122,5 @@ pipeline {
                     '''
             }
         }
-
-        // Optional ECS deployment stage
-        // stage('Deploy to ECS') {
-        //     agent { label 'docker-agent' }
-        //     steps {
-        //         withAWS(region: "${AWS_REGION}", credentials: 'aws-jenkins') {
-        //             sh """
-        //               aws ecs update-service \
-        //                 --cluster my-ecs-cluster \
-        //                 --service my-ecs-service \
-        //                 --force-new-deployment
-        //             """
-        //         }
-        //     }
-        // }
     }
 }
