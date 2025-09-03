@@ -34,8 +34,8 @@ pipeline {
                     dir('javaapp-pipeline') {
                         sh '''
                           mvn sonar:sonar \
-                            -Dsonar.projectKey=myapp \
-                            -Dsonar.projectName="MyApp"
+                            -Dsonar.projectKey=javaapp-pipeline \
+                            -Dsonar.projectName="Java App Pipeline"
                         '''
                     }
                 }
