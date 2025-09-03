@@ -19,10 +19,6 @@ pipeline {
 
         stage('Build & Test') {
             agent { label 'sonar-trivy-agent' }
-            tools { 
-                jdk 'jdk21'
-                maven 'maven3'
-            }
             steps {
                 dir('javaapp-standalone') {
                     sh 'mvn clean package'
