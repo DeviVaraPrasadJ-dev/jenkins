@@ -2,19 +2,18 @@ pipeline {
     agent none
 
     environment {
-        APP_NAME       = "java-sample-21"
-        AWS_REGION     = "ap-southeast-1"
-        AWS_ACCOUNT_ID = credentials('aws-account-id') // stored in Jenkins
-        ECR_REPO       = "javaapp-image"
-        IMAGE_URI      = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${BUILD_NUMBER}"
+        APP_NAME = "java-sample-21"
+        AWS_REGION = "ap-southeast-1"
+        AWS_ACCOUNT_ID = credentials('aws-account-id')  // stored in Jenkins
+        ECR_REPO = "javaapp-image"
+        IMAGE_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${BUILD_NUMBER}"
     }
 
     stages {
         stage('Checkout') {
             agent { label 'sonar-trivy-agent' }
             steps {
-                git branch: 'dev',
-                    url: 'https://github.com/DeviVaraPrasadJ-dev/jenkins.git'
+                git branch: 'dev', url: 'https://github.com/DeviVaraPrasadJ-dev/jenkins.git'
             }
         }
 
@@ -25,6 +24,7 @@ pipeline {
                     sh 'mvn clean package'
                     sh 'mvn test'
                     stash includes: 'target/java-sample-21-1.0.0.jar', name: 'built-jar'
+
                 }
             }
         }
@@ -54,77 +54,93 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image & Trivy Scan') {
+        stage('Build Docker Image') {
             agent { label 'docker-agent' }
             steps {
                 dir('javaapp-pipeline') {
                     unstash 'built-jar'
                     sh "docker build -t ${IMAGE_URI} ."
-                    
-                    // Install Trivy on docker-agent if not present
-                    sh '''
-                        if ! command -v trivy &> /dev/null; then
-                            echo "Installing Trivy..."
-                            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-                        fi
-                    '''
-                    
-                    // Run Trivy scan on the locally built image
-                    sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_URI}"
                 }
             }
         }
 
-        stage('Push to ECR') {
-            agent { label 'docker-agent' }
+        stage('Trivy Image Scan') {
+            agent { label 'sonar-trivy-agent' }
             steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-jenkins'
-                ]]) {
-                    sh '''
-                      echo "Ensuring ECR repo exists..."
-                      aws ecr describe-repositories --repository-names $ECR_REPO \
-                        || aws ecr create-repository --repository-name $ECR_REPO
-
-                      echo "Logging in to ECR..."
-                      aws ecr get-login-password --region $AWS_REGION | \
-                        docker login --username AWS --password-stdin \
-                        $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-
-                      echo "Pushing image to ECR..."
-                      docker push $IMAGE_URI
-                    '''
-                }
+                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_URI}"
             }
         }
 
-        stage('Deploy from ECR') {
-            agent {
-                label 'docker-agent'
-            }
-            steps  {
-                    sh '''
-                        echo "Logging in to Amazon ECR..."
-                        aws ecr get-login-password --region $AWS_REGION | \
-                        docker login --username AWS --password-stdin \
-                        $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+stage('Push to ECR') {
+    agent { label 'docker-agent' }
+    steps {
+        withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-jenkins'
+        ]]) {
+            sh '''
+              echo " Ensuring ECR repo exists..." 
+              aws ecr describe-repositories --repository-names $ECR_REPO \
+                || aws ecr create-repository --repository-name $ECR_REPO
 
-                        echo "Pulling image from ECR..."
-                        docker pull $IMAGE_URI
+              echo " Logging in to ECR..." 
+              aws ecr get-login-password --region $AWS_REGION | \
+                docker login --username AWS --password-stdin \
+                $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-                        echo "Stopping old container if exists..."
-                        docker rm -f javaapp-container || true
-
-                        echo "Running new container..."
-                        docker run -d \
-                            --name javaapp-container \
-                            -p 5000:5000 \
-                            $IMAGE_URI
-
-                        echo "Container is running at http://localhost:5000"
-                    '''
-            }
+              echo " Pushing image to ECR..." 
+              docker push $IMAGE_URI
+            '''
         }
     }
 }
+
+stage('Deploy from ECR') {
+    agent { label 'docker-agent' }
+    steps {
+        withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-jenkins'
+        ]]) {
+            sh '''
+                echo "Logging in to Amazon ECR..." 
+                aws ecr get-login-password --region $AWS_REGION | \
+                docker login --username AWS --password-stdin \
+                $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+                echo "Pulling image from ECR..." 
+                docker pull $IMAGE_URI
+
+                echo "Stopping old container if exists..." 
+                docker rm -f javaapp-container || true
+
+                echo "Running new container..." 
+                docker run -d \
+                    --name javaapp-container \
+                    -p 5000:5000 \
+                    $IMAGE_URI
+
+                echo "Container is running at http://localhost:5000" 
+            '''
+        }
+    }
+}
+
+
+        // stage('Deploy to ECS') {
+        //     agent { label 'docker-agent' }
+        //     steps {
+        //         withAWS(region: "${AWS_REGION}", credentials: 'aws-jenkins') {
+        //             sh """
+        //               aws ecs update-service \
+        //                 --cluster my-ecs-cluster \
+        //                 --service my-ecs-service \
+        //                 --force-new-deployment
+        //             """
+        //         }
+        //     }
+        // }
+       
+    }
+}
+
