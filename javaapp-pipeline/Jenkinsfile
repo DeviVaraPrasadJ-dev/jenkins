@@ -71,22 +71,61 @@ pipeline {
             }
         }
 
-        stage('Push to ECR') {
-            agent { label 'docker-agent' }
-            steps {
-                withAWS(region: "${AWS_REGION}", credentials: 'aws-jenkins') {
-                    sh """
-                      aws ecr describe-repositories --repository-names ${ECR_REPO} \
-                        || aws ecr create-repository --repository-name ${ECR_REPO}
+stage('Push to ECR') {
+    agent { label 'docker-agent' }
+    steps {
+        withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-jenkins'
+        ]]) {
+            sh '''
+              echo " Ensuring ECR repo exists..." 
+              aws ecr describe-repositories --repository-names $ECR_REPO \
+                || aws ecr create-repository --repository-name $ECR_REPO
 
-                      aws ecr get-login-password --region ${AWS_REGION} | \
-                        docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+              echo " Logging in to ECR..." 
+              aws ecr get-login-password --region $AWS_REGION | \
+                docker login --username AWS --password-stdin \
+                $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
 
-                      docker push ${IMAGE_URI}
-                    """
-                }
-            }
+              echo " Pushing image to ECR..." 
+              docker push $IMAGE_URI
+            '''
         }
+    }
+}
+
+stage('Deploy from ECR') {
+    agent { label 'docker-agent' }
+    steps {
+        withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: 'aws-jenkins'
+        ]]) {
+            sh '''
+                echo "Logging in to Amazon ECR..." 
+                aws ecr get-login-password --region $AWS_REGION | \
+                docker login --username AWS --password-stdin \
+                $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+                echo "Pulling image from ECR..." 
+                docker pull $IMAGE_URI
+
+                echo "Stopping old container if exists..." 
+                docker rm -f javaapp-container || true
+
+                echo "Running new container..." 
+                docker run -d \
+                    --name javaapp-container \
+                    -p 5000:5000 \
+                    $IMAGE_URI
+
+                echo "Container is running at http://localhost:5000" 
+            '''
+        }
+    }
+}
+
 
         // stage('Deploy to ECS') {
         //     agent { label 'docker-agent' }
@@ -101,30 +140,6 @@ pipeline {
         //         }
         //     }
         // }
-        stage('Deploy from ECR') {
-            steps {
-                sh '''
-                    echo " Logging in to Amazon ECR..."
-                    aws ecr get-login-password --region $AWS_REGION | \
-                    docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-
-                    echo " Pulling image from ECR..."
-                    docker pull $ECR_URI
-
-                    echo " Running container from ECR image..."
-
-                    # Stop and remove existing container if it exists
-                    docker rm -f javaapp-container || true
-
-                    # Run the container on port 5000
-                    docker run -d \
-                        --name javaapp-container \
-                        -p 5000:5000 \
-                        $ECR_URI
-
-                    echo " Container is running at http://localhost:5000"
-                '''
-            }
-        }
+       
     }
 }
