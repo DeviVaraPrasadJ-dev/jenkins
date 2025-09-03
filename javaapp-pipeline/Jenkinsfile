@@ -13,6 +13,8 @@ pipeline {
         stage('Checkout') {
             agent { label 'sonar-trivy-agent' }
             steps {
+                sudo apt-get update -y
+                sudo apt-get install git -y
                 git branch: 'dev', url: 'https://github.com/DeviVaraPrasadJ-dev/jenkins.git'
             }
         }
