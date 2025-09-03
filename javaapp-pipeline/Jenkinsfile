@@ -1,119 +1,106 @@
 pipeline {
-    agent {label 'agent'}
+    agent none
+
+    environment {
+        APP_NAME = "java-sample-21"
+        AWS_REGION = "ap-southeast-1"
+        AWS_ACCOUNT_ID = credentials('aws-account-id')  // stored in Jenkins
+        ECR_REPO = "javaapp-image"
+        IMAGE_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${BUILD_NUMBER}"
+    }
 
     stages {
         stage('Checkout') {
+            agent { label 'sonar-trivy-agent' }
             steps {
-                git url: 'https://github.com/DeviVaraPrasadJ-dev/jenkins.git'
+                git branch: 'dev', url: 'https://github.com/DeviVaraPrasadJ-dev/jenkins.git'
             }
         }
 
-        stage('Tests') {
-            parallel {
-                stage('Unit Tests') {
-                    steps {
-                        dir('javaapp-pipeline') {
-                            sh 'mvn clean test'
-                        }
-                    }
-                }
-                stage('Trivy Scan') {
-                    steps {
-                        dir('javaapp-pipeline') {
-                            sh '''
-                                wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -O html.tpl
-                                trivy fs --format template --template "@html.tpl" -o report.html .
-                            '''
-                        }
-                    }
-                }
+        stage('Build & Test') {
+            agent { label 'sonar-trivy-agent' }
+            tools { 
+                jdk 'jdk21'
+                maven 'maven3'
             }
-        }
-
-        // stage('Sonar Analysis') {
-        //     steps {
-        //         dir('javaapp-pipeline') {
-        //             withSonarQubeEnv('sonar') {
-        //                 sh '''
-        //                     mvn clean verify sonar:sonar \
-        //                     -Dsonar.projectKey=java-app \
-        //                     -Dsonar.projectName=java-app 
-        //                 '''
-        //             }
-        //         }
-        //     }
-        // }
-
-        stage('Build') {
             steps {
-                dir('javaapp-pipeline') {
+                dir('javaapp-standalone') {
                     sh 'mvn clean package'
+                    sh 'mvn test'
                 }
             }
         }
 
-         stage('Publish') {
-              agent { label 'agent2' } 
-              steps {
-                script {
-                  dir('javaapp-tomcat/target') {
-                    sh 'echo "Files in target:" && ls -lh'
-        
-                    rtUpload(
-                      serverId: 'jfrog',
-                      spec: '''{
-                        "files": [
-                          {
-                            "pattern": "artisantek-app.war",
-                            "target": "maven/com/artisantek/java-tomcat-21/1.0.1/"
-                          }
-                        ]
-                      }'''
-                    )
-                  }
-                }
-              }
-            }
-
-        stage('Deploy') {
+        stage('SonarQube & Trivy FS Scan') {
+            agent { label 'sonar-trivy-agent' }
             steps {
-                dir('javaapp-pipeline/target') {
-                    sh '''
-                        if pgrep -f "java -jar java-sample-21-1.0.0.jar" > /dev/null; then
-                            pkill -f "java -jar java-sample-21-1.0.0.jar"
-                            echo "App was running and has been killed."
-                        else
-                            echo "App is not running."
-                        fi
-                        JENKINS_NODE_COOKIE=dontKillMe nohup java -jar java-sample-21-1.0.0.jar > app.log 2>&1 &
-                    '''
+                withSonarQubeEnv('sonar') {
+                    dir('javaapp-standalone') {
+                        sh '''
+                          mvn sonar:sonar \
+                            -Dsonar.projectKey=myapp \
+                            -Dsonar.projectName="MyApp"
+                        '''
+                    }
+                }
+                dir('javaapp-standalone') {
+                    sh 'trivy fs --exit-code 0 --severity HIGH,CRITICAL .'
                 }
             }
         }
 
-    }
-    
-    post {
-    success {
-      withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
-        sh '''
-          curl -H "Content-Type: application/json" \
-          -X POST \
-          -d "{"content": "*Build Success!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}" \
-          $DISCORD_URL
-        '''
-      }
-    }
-    failure {
-      withCredentials([string(credentialsId: 'DISCORD_WEBHOOK', variable: 'DISCORD_URL')]) {
-        sh '''
-          curl -H "Content-Type: application/json" \
-          -X POST \
-          -d "{"content": "*Build Failed!* Job: '${JOB_NAME}' #${BUILD_NUMBER}"}" \
-          $DISCORD_URL
-        '''
-      }
-    }
+        stage('Wait for Quality Gate') {
+            agent { label 'sonar-trivy-agent' }
+            steps {
+                waitForQualityGate abortPipeline: true
+            }
+        }
 
+        stage('Build Docker Image') {
+            agent { label 'docker-agent' }
+            steps {
+                dir('javaapp-standalone') {
+                    sh "docker build -t ${IMAGE_URI} ."
+                }
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            agent { label 'docker-agent' }
+            steps {
+                sh "trivy image --exit-code 0 --severity HIGH,CRITICAL ${IMAGE_URI}"
+            }
+        }
+
+        stage('Push to ECR') {
+            agent { label 'docker-agent' }
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: 'aws-jenkins') {
+                    sh """
+                      aws ecr describe-repositories --repository-names ${ECR_REPO} \
+                        || aws ecr create-repository --repository-name ${ECR_REPO}
+
+                      aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+                      docker push ${IMAGE_URI}
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to ECS') {
+            agent { label 'docker-agent' }
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: 'aws-jenkins') {
+                    sh """
+                      aws ecs update-service \
+                        --cluster my-ecs-cluster \
+                        --service my-ecs-service \
+                        --force-new-deployment
+                    """
+                }
+            }
+        }
     }
 }
