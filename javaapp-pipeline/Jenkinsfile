@@ -96,8 +96,10 @@ pipeline {
         }
 
         stage('Deploy from ECR') {
-            agent { label 'docker-agent' }
-            steps {
+            agent { 
+                label 'docker-agent'
+            }
+            steps  {
                     sh '''
                         echo "Logging in to Amazon ECR..."
                         aws ecr get-login-password --region $AWS_REGION | \
