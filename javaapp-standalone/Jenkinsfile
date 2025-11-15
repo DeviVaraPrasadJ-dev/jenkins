@@ -122,8 +122,9 @@ spec:
 
     stage('Checkout') {
       steps {
-        checkout scm
-        sh "ls -R ${APP_DIR}"
+    container('maven') {
+      checkout scm
+      sh "ls -R ${APP_DIR}"
       }
     }
 
