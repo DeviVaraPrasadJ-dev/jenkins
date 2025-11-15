@@ -27,16 +27,17 @@ spec:
         mountPath: /kaniko/.docker
       - name: workspace
         mountPath: /home/jenkins/agent
-  - name: helm
-    image: alpine/helm:3.14.0
+  - name: aws
+    image: amazon/aws-cli:2.11.2
     command:
       - cat
     tty: true
     volumeMounts:
       - name: workspace
         mountPath: /workspace
-  - name: aws
-    image: amazon/aws-cli:2.11.2
+  - name: helm
+    # using an image that bundles helm + kubectl
+    image: lachlanevenson/k8s-helm:3.8.0
     command:
       - cat
     tty: true
@@ -61,19 +62,24 @@ spec:
     FULL_IMAGE = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
     APP_NAMESPACE = "app"
     APP_PORT = "5000"
+    APP_DIR = "jenkins/javaapp-standalone"
   }
 
   stages {
     stage('Checkout') {
       steps {
+        // Jenkins will checkout repo into workspace; Jenkinsfile is executed from workspace root
         checkout scm
+        sh "ls -la ${APP_DIR}"
       }
     }
 
     stage('Build artifact') {
       steps {
         container('maven') {
-          sh 'mvn -B -DskipTests clean package'
+          dir("${APP_DIR}") {
+            sh 'mvn -B -DskipTests clean package'
+          }
         }
       }
     }
@@ -81,11 +87,10 @@ spec:
     stage('Prepare ECR') {
       steps {
         container('aws') {
-          // ensure repo exists (safe even if you created manually)
           sh """
-            aws --version
+            aws --version || true
             aws ecr describe-repositories --repository-names ${REPO_NAME} --region ${AWS_REGION} || \
-            aws ecr create-repository --repository-name ${REPO_NAME} --region ${AWS_REGION}
+              aws ecr create-repository --repository-name ${REPO_NAME} --region ${AWS_REGION}
           """
         }
       }
@@ -94,11 +99,11 @@ spec:
     stage('Build & Push image (Kaniko)') {
       steps {
         container('kaniko') {
+          // Kaniko context points into the app dir inside workspace
           sh """
-            # Kaniko context expects workspace mounted at /home/jenkins/agent
             /kaniko/executor \
-              --context=dir:///home/jenkins/agent \
-              --dockerfile=/home/jenkins/agent/Dockerfile \
+              --context=dir:///home/jenkins/agent/${APP_DIR} \
+              --dockerfile=/home/jenkins/agent/${APP_DIR}/Dockerfile \
               --destination=${FULL_IMAGE} \
               --verbosity=info
           """
@@ -110,11 +115,11 @@ spec:
       steps {
         container('helm') {
           sh """
-            # make sure app namespace exists
+            # ensure namespace exists
             kubectl get ns ${APP_NAMESPACE} || kubectl create ns ${APP_NAMESPACE}
 
-            # deploy helm chart (assumes helm-chart or helm directory at repo root)
-            helm upgrade --install ${REPO_NAME} ./helm \
+            # deploy the chart placed in the app folder under 'helm'
+            helm upgrade --install ${REPO_NAME} ${APP_DIR}/helm \
               --namespace ${APP_NAMESPACE} \
               --set image.repository=${ECR_REGISTRY}/${REPO_NAME} \
               --set image.tag=${IMAGE_TAG} \
@@ -130,7 +135,7 @@ spec:
       echo "Pipeline succeeded — image: ${FULL_IMAGE}"
     }
     failure {
-      echo "Pipeline failed — check logs"
+      echo "Pipeline failed — check console output and pod logs"
     }
   }
 }
