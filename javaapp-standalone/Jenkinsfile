@@ -11,7 +11,9 @@ metadata:
     jenkins.io/skip-container-readiness: "kaniko"
 spec:
   serviceAccountName: jenkins
+
   containers:
+
   - name: maven
     image: maven:3.9.6-eclipse-temurin-17
     command: ['cat']
@@ -29,8 +31,8 @@ spec:
 
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    command: ['/kaniko/executor']
-    args: ['--help']
+    command: ['sh', '-c']
+    args: ['sleep 36000']
     volumeMounts:
       - name: kaniko-config
         mountPath: /kaniko/.docker
@@ -43,6 +45,7 @@ spec:
     - name: kaniko-config
       secret:
         secretName: regcred
+
       """
     }
   }
