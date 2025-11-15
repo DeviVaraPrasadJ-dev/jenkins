@@ -127,7 +127,7 @@ spec:
       sh "ls -R ${APP_DIR}"
       }
     }
-
+    }
     /* ---------------------- PARALLEL BLOCK ADDED ---------------------- */
     stage('Parallel Build Prep') {
       parallel {
