@@ -182,11 +182,14 @@ spec:
         container('helm') {
           sh """
             kubectl get ns ${APP_NAMESPACE} || kubectl create ns ${APP_NAMESPACE}
-            helm upgrade --install ${REPO_NAME} ${APP_DIR}/helm \
+            helm upgrade --install movie-review ${APP_DIR}/helm \
               --namespace ${APP_NAMESPACE} \
               --set image.repository=${ECR_REGISTRY}/${REPO_NAME} \
               --set image.tag=${IMAGE_TAG} \
-              --set service.port=${APP_PORT}
+              --set service.port=5000 \
+              --set service.type=NodePort \
+              --set service.nodePort=30050 \
+              --set service.targetPort=8080
           """
         }
       }
