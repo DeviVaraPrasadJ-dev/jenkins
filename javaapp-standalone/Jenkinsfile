@@ -13,40 +13,47 @@ spec:
   serviceAccountName: jenkins
 
   containers:
-
   - name: maven
     image: maven:3.9.6-eclipse-temurin-17
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: workspace
+      mountPath: /home/jenkins/agent
 
   - name: aws
     image: amazon/aws-cli:2.11.2
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: workspace
+      mountPath: /workspace
 
   - name: helm
     image: dtzar/helm-kubectl:3.14.0
     command: ['cat']
     tty: true
+    volumeMounts:
+    - name: workspace
+      mountPath: /workspace
 
   - name: kaniko
-    image: gcr.io/kaniko-project/executor:latest
-    command: ['sh', '-c']
-    args: ['sleep 36000']
+    image: gcr.io/kaniko-project/executor:debug
+    command: ["/busybox/sh"]
+    args: ["-c", "sleep 3600"]
     volumeMounts:
-      - name: kaniko-config
-        mountPath: /kaniko/.docker
-      - name: workspace
-        mountPath: /home/jenkins/agent
+    - name: kaniko-config
+      mountPath: /kaniko/.docker
+    - name: workspace
+      mountPath: /home/jenkins/agent
 
   volumes:
-    - name: workspace
-      emptyDir: {}
-    - name: kaniko-config
-      secret:
-        secretName: regcred
-
-      """
+  - name: workspace
+    emptyDir: {}
+  - name: kaniko-config
+    secret:
+      secretName: regcred
+"""
     }
   }
 
@@ -84,9 +91,8 @@ spec:
       steps {
         container('aws') {
           sh """
-            aws --version || true
             aws ecr describe-repositories --repository-names ${REPO_NAME} --region ${AWS_REGION} || \
-              aws ecr create-repository --repository-name ${REPO_NAME} --region ${AWS_REGION}
+            aws ecr create-repository --repository-name ${REPO_NAME} --region ${AWS_REGION}
           """
         }
       }
@@ -106,7 +112,7 @@ spec:
       }
     }
 
-    stage('Deploy using Helm') {
+    stage('Deploy with Helm') {
       steps {
         container('helm') {
           sh """
