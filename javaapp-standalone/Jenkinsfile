@@ -24,9 +24,28 @@ spec:
     image: amazon/aws-cli:2.11.2
     command: ['cat']
     tty: true
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: aws-creds
+            key: AWS_ACCESS_KEY_ID
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: aws-creds
+            key: AWS_SECRET_ACCESS_KEY
+      - name: AWS_DEFAULT_REGION
+        valueFrom:
+          secretKeyRef:
+            name: aws-creds
+            key: AWS_DEFAULT_REGION
     volumeMounts:
       - name: workspace
+        mountPath: /workspace
+      - name: workspace-volume
         mountPath: /home/jenkins/agent
+
 
   - name: helm
     image: dtzar/helm-kubectl:3.14.0
@@ -38,14 +57,30 @@ spec:
 
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
-    command: ["/busybox/sh"]
-    args: ["-c", "sleep 3600"]
-    tty: true
+    command: ['/busybox/sh']
+    args: ['-c', 'sleep 3600']
+    env:
+      - name: AWS_ACCESS_KEY_ID
+        valueFrom:
+          secretKeyRef:
+            name: aws-creds
+            key: AWS_ACCESS_KEY_ID
+      - name: AWS_SECRET_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: aws-creds
+            key: AWS_SECRET_ACCESS_KEY
+      - name: AWS_DEFAULT_REGION
+        valueFrom:
+          secretKeyRef:
+            name: aws-creds
+            key: AWS_DEFAULT_REGION
     volumeMounts:
-      - name: workspace
-        mountPath: /home/jenkins/agent
       - name: kaniko-config
         mountPath: /kaniko/.docker
+      - name: workspace
+        mountPath: /home/jenkins/agent
+
 
   - name: jnlp
     image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
