@@ -1,0 +1,20 @@
+replicaCount: 1
+
+image:
+  repository: 197315783820.dkr.ecr.ap-southeast-1.amazonaws.com/movie-review
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 5000
+
+ingress:
+  enabled: false
+  hosts:
+    - host: jamidvp.movie-review.site
+      paths:
+        - /
+
+resources: {}
+env: {}
