@@ -10,6 +10,7 @@ kind: Pod
 metadata:
   annotations:
     jenkins.io/skip-container-readiness: "kaniko"
+
 spec:
   serviceAccountName: jenkins
   restartPolicy: Never
@@ -93,6 +94,13 @@ spec:
         - name: workspace
           mountPath: /home/jenkins/agent
 
+    - name: jnlp
+      image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
+      args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
+      volumeMounts:
+        - name: workspace
+          mountPath: /home/jenkins/agent
+
   volumes:
     - name: workspace
       emptyDir: {}
@@ -103,60 +111,49 @@ spec:
     }
   }
 
-  options {
-    skipDefaultCheckout()    // IMPORTANT FIX
-  }
-
   environment {
-    AWS_REGION = "ap-southeast-1"
-    ECR_REGISTRY = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
-    REPO_NAME = "movie-review"
-    IMAGE_TAG = "${env.BUILD_NUMBER}"
-    FULL_IMAGE = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
-    APP_DIR = "javaapp-standalone"
-    APP_NAMESPACE = "app"
-    APP_PORT = "8080"
+    AWS_REGION      = "ap-southeast-1"
+    ECR_REGISTRY    = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
+    REPO_NAME       = "movie-review"
+    IMAGE_TAG       = "${env.BUILD_NUMBER}"
+    FULL_IMAGE      = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
+    APP_DIR         = "javaapp-standalone"
+    APP_NAMESPACE   = "app"
+    APP_PORT        = "8080"
   }
 
   stages {
 
     stage('Checkout') {
       steps {
-      container('maven') {
-      checkout scm
-      sh "ls -R ${APP_DIR}"
+        container('maven') {
+          checkout scm
+          sh "ls -R ${APP_DIR}"
+        }
       }
     }
-    }
-    /* ---------------------- PARALLEL BLOCK ADDED ---------------------- */
-    stage('Parallel Build Prep') {
+
+    stage('Build + ECR Prep (Parallel)') {
       parallel {
 
-        stage('Build Artifact (Maven)') {
-          steps {
-            container('maven') {
-              dir("${APP_DIR}") {
-                sh "mvn -B -DskipTests clean package"
-              }
+        Build_Maven: {
+          container('maven') {
+            dir("${APP_DIR}") {
+              sh "mvn -B -DskipTests clean package"
             }
           }
         }
 
-        stage('Ensure ECR Exists') {
-          steps {
-            container('aws') {
-              sh """
-                aws ecr describe-repositories --repository-names ${REPO_NAME} || \
-                aws ecr create-repository --repository-name ${REPO_NAME}
-              """
-            }
+        Ensure_ECR: {
+          container('aws') {
+            sh """
+              aws ecr describe-repositories --repository-names ${REPO_NAME} || \
+              aws ecr create-repository --repository-name ${REPO_NAME}
+            """
           }
         }
-
       }
     }
-    /* ---------------------- END PARALLEL BLOCK ------------------------ */
-
 
     stage('Build & Push Image (Kaniko)') {
       steps {
@@ -177,6 +174,7 @@ spec:
         container('helm') {
           sh """
             kubectl get ns ${APP_NAMESPACE} || kubectl create ns ${APP_NAMESPACE}
+
             helm upgrade --install movie-review ${APP_DIR}/helm \
               --namespace ${APP_NAMESPACE} \
               --set image.repository=${ECR_REGISTRY}/${REPO_NAME} \
