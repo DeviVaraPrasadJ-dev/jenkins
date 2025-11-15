@@ -20,13 +20,16 @@ spec:
 
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
+    command:
+      - /kaniko/executor
     args:
-      - ""
+      - "--help"
     volumeMounts:
       - name: kaniko-config
         mountPath: /kaniko/.docker
       - name: workspace
         mountPath: /home/jenkins/agent
+
 
   - name: aws
     image: amazon/aws-cli:2.11.2
