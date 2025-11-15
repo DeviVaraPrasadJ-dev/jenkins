@@ -2,7 +2,6 @@ pipeline {
   agent {
     kubernetes {
       inheritFrom 'kaniko-maven-agent'
-      label 'kaniko-maven-agent'
       defaultContainer 'maven'
       yaml """
 apiVersion: v1
@@ -10,41 +9,41 @@ kind: Pod
 spec:
   serviceAccountName: jenkins
   containers:
+
   - name: maven
-    image: maven:3.8.7-openjdk-17
-    command:
-      - cat
+    image: maven:3.9.6-eclipse-temurin-17
+    command: ["sh", "-c", "sleep infinity"]
     tty: true
     volumeMounts:
       - name: workspace
         mountPath: /home/jenkins/agent
+
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    command:
-      - cat
+    command: ["/busybox/sh", "-c", "sleep infinity"]
     tty: true
     volumeMounts:
       - name: kaniko-config
         mountPath: /kaniko/.docker
       - name: workspace
         mountPath: /home/jenkins/agent
+
   - name: aws
     image: amazon/aws-cli:2.11.2
-    command:
-      - cat
+    command: ["sh", "-c", "sleep infinity"]
     tty: true
     volumeMounts:
       - name: workspace
         mountPath: /workspace
+
   - name: helm
-    # using an image that bundles helm + kubectl
-    image: lachlanevenson/k8s-helm:3.8.0
-    command:
-      - cat
+    image: dtzar/helm-kubectl:3.14.0
+    command: ["sh", "-c", "sleep infinity"]
     tty: true
     volumeMounts:
       - name: workspace
         mountPath: /workspace
+
   volumes:
     - name: workspace
       emptyDir: {}
@@ -67,15 +66,15 @@ spec:
   }
 
   stages {
+
     stage('Checkout') {
       steps {
-        // Jenkins will checkout repo into workspace; Jenkinsfile is executed from workspace root
         checkout scm
-        sh "ls -la ${APP_DIR}"
+        sh "echo 'Repo structure:' && ls -R ${APP_DIR}"
       }
     }
 
-    stage('Build artifact') {
+    stage('Build Artifact (Maven)') {
       steps {
         container('maven') {
           dir("${APP_DIR}") {
@@ -97,10 +96,9 @@ spec:
       }
     }
 
-    stage('Build & Push image (Kaniko)') {
+    stage('Build & Push Image (Kaniko)') {
       steps {
         container('kaniko') {
-          // Kaniko context points into the app dir inside workspace
           sh """
             /kaniko/executor \
               --context=dir:///home/jenkins/agent/${APP_DIR} \
@@ -112,14 +110,12 @@ spec:
       }
     }
 
-    stage('Deploy with Helm') {
+    stage('Deploy using Helm') {
       steps {
         container('helm') {
           sh """
-            # ensure namespace exists
             kubectl get ns ${APP_NAMESPACE} || kubectl create ns ${APP_NAMESPACE}
 
-            # deploy the chart placed in the app folder under 'helm'
             helm upgrade --install ${REPO_NAME} ${APP_DIR}/helm \
               --namespace ${APP_NAMESPACE} \
               --set image.repository=${ECR_REGISTRY}/${REPO_NAME} \
@@ -133,10 +129,10 @@ spec:
 
   post {
     success {
-      echo "Pipeline succeeded — image: ${FULL_IMAGE}"
+      echo "Pipeline succeeded → Image pushed: ${FULL_IMAGE}"
     }
     failure {
-      echo "Pipeline failed — check console output and pod logs"
+      echo "Pipeline failed — Check pod logs and Jenkins output."
     }
   }
 }
