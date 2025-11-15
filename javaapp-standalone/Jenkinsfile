@@ -1,0 +1,136 @@
+pipeline {
+  agent {
+    kubernetes {
+      label 'kaniko-maven-agent'
+      defaultContainer 'maven'
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: maven
+    image: maven:3.8.7-openjdk-17
+    command:
+      - cat
+    tty: true
+    volumeMounts:
+      - name: workspace
+        mountPath: /home/jenkins/agent
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
+    command:
+      - cat
+    tty: true
+    volumeMounts:
+      - name: kaniko-config
+        mountPath: /kaniko/.docker
+      - name: workspace
+        mountPath: /home/jenkins/agent
+  - name: helm
+    image: alpine/helm:3.14.0
+    command:
+      - cat
+    tty: true
+    volumeMounts:
+      - name: workspace
+        mountPath: /workspace
+  - name: aws
+    image: amazon/aws-cli:2.11.2
+    command:
+      - cat
+    tty: true
+    volumeMounts:
+      - name: workspace
+        mountPath: /workspace
+  volumes:
+    - name: workspace
+      emptyDir: {}
+    - name: kaniko-config
+      secret:
+        secretName: regcred
+"""
+    }
+  }
+
+  environment {
+    AWS_REGION = "ap-southeast-1"
+    ECR_REGISTRY = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
+    REPO_NAME = "movie-review"
+    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    FULL_IMAGE = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
+    APP_NAMESPACE = "app"
+    APP_PORT = "5000"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build artifact') {
+      steps {
+        container('maven') {
+          sh 'mvn -B -DskipTests clean package'
+        }
+      }
+    }
+
+    stage('Prepare ECR') {
+      steps {
+        container('aws') {
+          // ensure repo exists (safe even if you created manually)
+          sh """
+            aws --version
+            aws ecr describe-repositories --repository-names ${REPO_NAME} --region ${AWS_REGION} || \
+            aws ecr create-repository --repository-name ${REPO_NAME} --region ${AWS_REGION}
+          """
+        }
+      }
+    }
+
+    stage('Build & Push image (Kaniko)') {
+      steps {
+        container('kaniko') {
+          sh """
+            # Kaniko context expects workspace mounted at /home/jenkins/agent
+            /kaniko/executor \
+              --context=dir:///home/jenkins/agent \
+              --dockerfile=/home/jenkins/agent/Dockerfile \
+              --destination=${FULL_IMAGE} \
+              --verbosity=info
+          """
+        }
+      }
+    }
+
+    stage('Deploy with Helm') {
+      steps {
+        container('helm') {
+          sh """
+            # make sure app namespace exists
+            kubectl get ns ${APP_NAMESPACE} || kubectl create ns ${APP_NAMESPACE}
+
+            # deploy helm chart (assumes helm-chart or helm directory at repo root)
+            helm upgrade --install ${REPO_NAME} ./helm \
+              --namespace ${APP_NAMESPACE} \
+              --set image.repository=${ECR_REGISTRY}/${REPO_NAME} \
+              --set image.tag=${IMAGE_TAG} \
+              --set service.port=${APP_PORT}
+          """
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      echo "Pipeline succeeded — image: ${FULL_IMAGE}"
+    }
+    failure {
+      echo "Pipeline failed — check logs"
+    }
+  }
+}
