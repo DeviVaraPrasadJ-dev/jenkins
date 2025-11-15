@@ -78,11 +78,16 @@ spec:
 
         - name: AWS_REGION
           value: "ap-southeast-1"
-
       volumeMounts:
         - name: workspace
           mountPath: /home/jenkins/agent
-
+    
+    - name: jnlp
+      image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
+      args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
+      volumeMounts:
+        - name: workspace
+          mountPath: /home/jenkins/agent
   volumes:
     - name: workspace
       emptyDir: {}
