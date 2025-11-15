@@ -2,10 +2,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "movie-review.fullname" . }}
+  labels:
+    {{- include "movie-review.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      nodePort: {{ .Values.service.nodePort | default "" }}
   selector:
-    app: {{ include "movie-review.name" . }}
+    {{- include "movie-review.selectorLabels" . | nindent 4 }}
