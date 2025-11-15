@@ -15,6 +15,11 @@ ingress:
     - host: jamidvp.movie-review.site
       paths:
         - /
+service:
+  type: NodePort
+  port: 5000
+  targetPort: 8080     # Your app container port
+  nodePort: 30050      # Any port between 30000–32767
 
 resources: {}
 env: {}
