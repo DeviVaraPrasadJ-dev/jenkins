@@ -15,17 +15,25 @@ spec:
   restartPolicy: Never
 
   containers:
+
     - name: maven
       image: maven:3.9.6-eclipse-temurin-17
-      command: ['cat']
+      command: ["cat"]
       tty: true
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
       volumeMounts:
         - name: workspace
           mountPath: /home/jenkins/agent
 
     - name: aws
       image: public.ecr.aws/aws-cli/aws-cli:latest
-      command: ['cat']
+      command: ["cat"]
       tty: true
       env:
         - name: AWS_ACCESS_KEY_ID
@@ -33,21 +41,37 @@ spec:
             secretKeyRef:
               name: aws-creds
               key: aws_access_key_id
+
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
               name: aws-creds
               key: aws_secret_access_key
+
         - name: AWS_REGION
           value: "ap-southeast-1"
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "300m"
+          memory: "256Mi"
       volumeMounts:
         - name: workspace
           mountPath: /home/jenkins/agent
 
     - name: helm
       image: dtzar/helm-kubectl:3.14.0
-      command: ['cat']
+      command: ["cat"]
       tty: true
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "128Mi"
+        limits:
+          cpu: "300m"
+          memory: "256Mi"
       volumeMounts:
         - name: workspace
           mountPath: /home/jenkins/agent
@@ -56,6 +80,13 @@ spec:
       image: gcr.io/kaniko-project/executor:debug
       command: ["/busybox/sh"]
       args: ["-c", "sleep 3600"]
+      resources:
+        requests:
+          cpu: "200m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1Gi"
       volumeMounts:
         - name: kaniko-config
           mountPath: /kaniko/.docker
@@ -68,7 +99,7 @@ spec:
     - name: kaniko-config
       secret:
         secretName: regcred
-"""
+  """
     }
   }
 
