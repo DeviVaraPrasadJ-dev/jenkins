@@ -1,16 +1,13 @@
 pipeline {
-
   agent {
     kubernetes {
       defaultContainer 'maven'
-
       yaml """
 apiVersion: v1
 kind: Pod
 metadata:
   annotations:
     jenkins.io/skip-container-readiness: "kaniko"
-
 spec:
   serviceAccountName: jenkins
   restartPolicy: Never
@@ -42,22 +39,13 @@ spec:
             secretKeyRef:
               name: aws-creds
               key: aws_access_key_id
-
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
               name: aws-creds
               key: aws_secret_access_key
-
         - name: AWS_REGION
           value: "ap-southeast-1"
-      resources:
-        requests:
-          cpu: "100m"
-          memory: "128Mi"
-        limits:
-          cpu: "300m"
-          memory: "256Mi"
       volumeMounts:
         - name: workspace
           mountPath: /home/jenkins/agent
@@ -66,13 +54,6 @@ spec:
       image: dtzar/helm-kubectl:3.14.0
       command: ["cat"]
       tty: true
-      resources:
-        requests:
-          cpu: "100m"
-          memory: "128Mi"
-        limits:
-          cpu: "300m"
-          memory: "256Mi"
       volumeMounts:
         - name: workspace
           mountPath: /home/jenkins/agent
@@ -81,13 +62,7 @@ spec:
       image: gcr.io/kaniko-project/executor:debug
       command: ["/busybox/sh"]
       args: ["-c", "sleep 3600"]
-      resources:
-        requests:
-          cpu: "200m"
-          memory: "512Mi"
-        limits:
-          cpu: "1"
-          memory: "1Gi"
+      tty: true
       volumeMounts:
         - name: kaniko-config
           mountPath: /kaniko/.docker
@@ -107,19 +82,26 @@ spec:
     - name: kaniko-config
       secret:
         secretName: regcred
-  """
+"""
     }
   }
 
+  options {
+    // prevents automatic default checkout: we perform checkout explicitly in the Checkout stage
+    skipDefaultCheckout()
+    // reduce noisy logs if desired
+    timestamps()
+  }
+
   environment {
-    AWS_REGION      = "ap-southeast-1"
-    ECR_REGISTRY    = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
-    REPO_NAME       = "movie-review"
-    IMAGE_TAG       = "${env.BUILD_NUMBER}"
-    FULL_IMAGE      = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
-    APP_DIR         = "javaapp-standalone"
-    APP_NAMESPACE   = "app"
-    APP_PORT        = "8080"
+    AWS_REGION    = "ap-southeast-1"
+    ECR_REGISTRY  = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
+    REPO_NAME     = "movie-review"
+    IMAGE_TAG     = "${env.BUILD_NUMBER}"
+    FULL_IMAGE    = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
+    APP_DIR       = "javaapp-standalone"
+    APP_NAMESPACE = "app"
+    APP_PORT      = "8080"
   }
 
   stages {
@@ -127,44 +109,52 @@ spec:
     stage('Checkout') {
       steps {
         container('maven') {
+          // explicit checkout (skipDefaultCheckout() prevents automatic checkout)
           checkout scm
-          sh "ls -R ${APP_DIR}"
+          sh "echo 'Contents of ${APP_DIR}:' && ls -la ${APP_DIR} || true"
         }
       }
     }
 
-   stage('Build + ECR Prep (Parallel)') {
-  parallel {
+    stage('Build + ECR Prep (parallel)') {
+      parallel {
+        stage('Build - Maven') {
+          steps {
+            container('maven') {
+              dir("${APP_DIR}") {
+                sh 'mvn -B -DskipTests clean package'
+              }
+            }
+          }
+        }
 
-    stage('Build Maven') {
-      steps {
-        container('maven') {
-          dir("${APP_DIR}") {
-            sh "mvn -B -DskipTests clean package"
+        stage('Ensure ECR') {
+          steps {
+            container('aws') {
+              // if aws credentials are set in secret, this will succeed.
+              sh '''
+                aws --version || true
+                aws ecr describe-repositories --repository-names ${REPO_NAME} --region ${AWS_REGION} || \
+                aws ecr create-repository --repository-name ${REPO_NAME} --region ${AWS_REGION}
+              '''
+            }
           }
         }
       }
     }
 
-    stage('Ensure ECR') {
-      steps {
-        container('aws') {
-          sh """
-            aws ecr describe-repositories --repository-names ${REPO_NAME} || \
-            aws ecr create-repository --repository-name ${REPO_NAME}
-          """
-        }
-      }
-    }
-
-  }
-}
-
-
     stage('Build & Push Image (Kaniko)') {
       steps {
         container('kaniko') {
+          // run kaniko executor from the kaniko debug image (executor binary present)
           sh """
+            # validate Dockerfile exists
+            if [ ! -f /home/jenkins/agent/${APP_DIR}/Dockerfile ]; then
+              echo "ERROR: Dockerfile not found at /home/jenkins/agent/${APP_DIR}/Dockerfile"
+              ls -la /home/jenkins/agent/${APP_DIR} || true
+              exit 1
+            fi
+
             /kaniko/executor \
               --context=dir:///home/jenkins/agent/${APP_DIR} \
               --dockerfile=/home/jenkins/agent/${APP_DIR}/Dockerfile \
@@ -180,8 +170,7 @@ spec:
         container('helm') {
           sh """
             kubectl get ns ${APP_NAMESPACE} || kubectl create ns ${APP_NAMESPACE}
-
-            helm upgrade --install movie-review ${APP_DIR}/helm \
+            helm upgrade --install ${REPO_NAME} ${APP_DIR}/helm \
               --namespace ${APP_NAMESPACE} \
               --set image.repository=${ECR_REGISTRY}/${REPO_NAME} \
               --set image.tag=${IMAGE_TAG} \
