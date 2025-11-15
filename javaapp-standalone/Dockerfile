@@ -1,5 +1,10 @@
 FROM eclipse-temurin:17-jre
+
 WORKDIR /app
-COPY target/*.jar app.jar
-EXPOSE 5000
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+
+# Copy the JAR into /app directory
+COPY target/*.jar /app/app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
