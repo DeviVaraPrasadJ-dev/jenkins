@@ -1,7 +1,9 @@
 pipeline {
+
   agent {
     kubernetes {
       defaultContainer 'maven'
+
       yaml """
 apiVersion: v1
 kind: Pod
@@ -10,84 +12,55 @@ metadata:
     jenkins.io/skip-container-readiness: "kaniko"
 spec:
   serviceAccountName: jenkins
+  restartPolicy: Never
+
   containers:
+    - name: maven
+      image: maven:3.9.6-eclipse-temurin-17
+      command: ['cat']
+      tty: true
+      volumeMounts:
+        - name: workspace
+          mountPath: /home/jenkins/agent
 
-  - name: maven
-    image: maven:3.9.6-eclipse-temurin-21
-    command: ['cat']
-    tty: true
-    volumeMounts:
-      - name: workspace
-        mountPath: /home/jenkins/agent
+    - name: aws
+      image: amazon/aws-cli:2.11.2
+      command: ['cat']
+      tty: true
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-creds
+              key: access_key
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-creds
+              key: secret_key
+        - name: AWS_REGION
+          value: "ap-southeast-1"
+      volumeMounts:
+        - name: workspace
+          mountPath: /home/jenkins/agent
 
-  - name: aws
-    image: amazon/aws-cli:2.11.2
-    command: ['cat']
-    tty: true
-    env:
-      - name: AWS_ACCESS_KEY_ID
-        valueFrom:
-          secretKeyRef:
-            name: aws-creds
-            key: AWS_ACCESS_KEY_ID
-      - name: AWS_SECRET_ACCESS_KEY
-        valueFrom:
-          secretKeyRef:
-            name: aws-creds
-            key: AWS_SECRET_ACCESS_KEY
-      - name: AWS_DEFAULT_REGION
-        valueFrom:
-          secretKeyRef:
-            name: aws-creds
-            key: AWS_DEFAULT_REGION
-    volumeMounts:
-      - name: workspace
-        mountPath: /workspace
-      - name: workspace-volume
-        mountPath: /home/jenkins/agent
+    - name: helm
+      image: dtzar/helm-kubectl:3.14.0
+      command: ['cat']
+      tty: true
+      volumeMounts:
+        - name: workspace
+          mountPath: /home/jenkins/agent
 
-
-  - name: helm
-    image: dtzar/helm-kubectl:3.14.0
-    command: ['cat']
-    tty: true
-    volumeMounts:
-      - name: workspace
-        mountPath: /home/jenkins/agent
-
-  - name: kaniko
-    image: gcr.io/kaniko-project/executor:debug
-    command: ['/busybox/sh']
-    args: ['-c', 'sleep 3600']
-    env:
-      - name: AWS_ACCESS_KEY_ID
-        valueFrom:
-          secretKeyRef:
-            name: aws-creds
-            key: AWS_ACCESS_KEY_ID
-      - name: AWS_SECRET_ACCESS_KEY
-        valueFrom:
-          secretKeyRef:
-            name: aws-creds
-            key: AWS_SECRET_ACCESS_KEY
-      - name: AWS_DEFAULT_REGION
-        valueFrom:
-          secretKeyRef:
-            name: aws-creds
-            key: AWS_DEFAULT_REGION
-    volumeMounts:
-      - name: kaniko-config
-        mountPath: /kaniko/.docker
-      - name: workspace
-        mountPath: /home/jenkins/agent
-
-
-  - name: jnlp
-    image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
-    args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
-    volumeMounts:
-      - name: workspace
-        mountPath: /home/jenkins/agent
+    - name: kaniko
+      image: gcr.io/kaniko-project/executor:debug
+      command: ["/busybox/sh"]
+      args: ["-c", "sleep 3600"]
+      volumeMounts:
+        - name: kaniko-config
+          mountPath: /kaniko/.docker
+        - name: workspace
+          mountPath: /home/jenkins/agent
 
   volumes:
     - name: workspace
@@ -100,30 +73,30 @@ spec:
   }
 
   environment {
-    AWS_REGION    = "ap-southeast-1"
-    ECR_REGISTRY  = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
-    REPO_NAME     = "movie-review"
-    IMAGE_TAG     = "${env.BUILD_NUMBER}"
-    FULL_IMAGE    = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
-    APP_DIR       = "javaapp-standalone"
+    AWS_REGION = "ap-southeast-1"
+    ECR_REGISTRY = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
+    REPO_NAME = "movie-review"
+    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    FULL_IMAGE = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
+    APP_DIR = "javaapp-standalone"
     APP_NAMESPACE = "app"
-    APP_PORT      = "5000"
+    APP_PORT = "8080"
   }
 
   stages {
 
-    stage('Checkout Source') {
+    stage('Checkout') {
       steps {
         checkout scm
-        sh 'ls -R'
+        sh "ls -R ${APP_DIR}"
       }
     }
 
-    stage('Maven Build') {
+    stage('Build Artifact (Maven)') {
       steps {
         container('maven') {
           dir("${APP_DIR}") {
-            sh 'mvn -B -DskipTests clean package'
+            sh "mvn -B -DskipTests clean package"
           }
         }
       }
@@ -133,8 +106,8 @@ spec:
       steps {
         container('aws') {
           sh """
-            aws ecr describe-repositories --repository-names ${REPO_NAME} --region ${AWS_REGION} || \
-            aws ecr create-repository --repository-name ${REPO_NAME} --region ${AWS_REGION}
+            aws ecr describe-repositories --repository-names ${REPO_NAME} || \
+            aws ecr create-repository --repository-name ${REPO_NAME}
           """
         }
       }
@@ -159,8 +132,7 @@ spec:
         container('helm') {
           sh """
             kubectl get ns ${APP_NAMESPACE} || kubectl create ns ${APP_NAMESPACE}
-
-            helm upgrade --install ${REPO_NAME} ${APP_DIR}/helm \
+            helm upgrade --install movie-review ${APP_DIR}/helm \
               --namespace ${APP_NAMESPACE} \
               --set image.repository=${ECR_REGISTRY}/${REPO_NAME} \
               --set image.tag=${IMAGE_TAG} \
@@ -169,7 +141,6 @@ spec:
         }
       }
     }
-
   }
 
   post {
@@ -177,7 +148,7 @@ spec:
       echo "SUCCESS → Image pushed: ${FULL_IMAGE}"
     }
     failure {
-      echo "FAILED → Check logs in Maven / Kaniko / Helm containers."
+      echo "FAILED → Check Maven / AWS / Kaniko / Helm logs"
     }
   }
 }
