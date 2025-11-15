@@ -1,6 +1,7 @@
 pipeline {
   agent {
     kubernetes {
+      inheritFrom 'kaniko-maven-agent'
       label 'kaniko-maven-agent'
       defaultContainer 'maven'
       yaml """
