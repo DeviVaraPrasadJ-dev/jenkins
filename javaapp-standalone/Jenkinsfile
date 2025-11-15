@@ -89,8 +89,7 @@ spec:
   options {
     // prevents automatic default checkout: we perform checkout explicitly in the Checkout stage
     skipDefaultCheckout()
-    // reduce noisy logs if desired
-    timestamps()
+
   }
 
   environment {
