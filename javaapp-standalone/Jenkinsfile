@@ -133,27 +133,33 @@ spec:
       }
     }
 
-    stage('Build + ECR Prep (Parallel)') {
-      parallel {
+   stage('Build + ECR Prep (Parallel)') {
+  parallel {
 
-        Build_Maven: {
-          container('maven') {
-            dir("${APP_DIR}") {
-              sh "mvn -B -DskipTests clean package"
-            }
-          }
-        }
-
-        Ensure_ECR: {
-          container('aws') {
-            sh """
-              aws ecr describe-repositories --repository-names ${REPO_NAME} || \
-              aws ecr create-repository --repository-name ${REPO_NAME}
-            """
+    stage('Build Maven') {
+      steps {
+        container('maven') {
+          dir("${APP_DIR}") {
+            sh "mvn -B -DskipTests clean package"
           }
         }
       }
     }
+
+    stage('Ensure ECR') {
+      steps {
+        container('aws') {
+          sh """
+            aws ecr describe-repositories --repository-names ${REPO_NAME} || \
+            aws ecr create-repository --repository-name ${REPO_NAME}
+          """
+        }
+      }
+    }
+
+  }
+}
+
 
     stage('Build & Push Image (Kaniko)') {
       steps {
