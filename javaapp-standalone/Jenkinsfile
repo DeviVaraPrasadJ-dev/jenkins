@@ -24,7 +24,7 @@ spec:
           mountPath: /home/jenkins/agent
 
     - name: aws
-      image: amazon/aws-cli:2.11.2
+      image: public.ecr.aws/aws-cli/aws-cli:latest
       command: ['cat']
       tty: true
       env:
