@@ -103,6 +103,10 @@ spec:
     }
   }
 
+  options {
+    skipDefaultCheckout(true)   // ⬅️ ADDED AS REQUESTED
+  }
+
   environment {
     AWS_REGION = "ap-southeast-1"
     ECR_REGISTRY = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
@@ -123,26 +127,35 @@ spec:
       }
     }
 
-    stage('Build Artifact (Maven)') {
-      steps {
-        container('maven') {
-          dir("${APP_DIR}") {
-            sh "mvn -B -DskipTests clean package"
+    /* ---------------------- PARALLEL BLOCK ADDED ---------------------- */
+    stage('Parallel Build Prep') {
+      parallel {
+
+        stage('Build Artifact (Maven)') {
+          steps {
+            container('maven') {
+              dir("${APP_DIR}") {
+                sh "mvn -B -DskipTests clean package"
+              }
+            }
           }
         }
-      }
-    }
 
-    stage('Ensure ECR Exists') {
-      steps {
-        container('aws') {
-          sh """
-            aws ecr describe-repositories --repository-names ${REPO_NAME} || \
-            aws ecr create-repository --repository-name ${REPO_NAME}
-          """
+        stage('Ensure ECR Exists') {
+          steps {
+            container('aws') {
+              sh """
+                aws ecr describe-repositories --repository-names ${REPO_NAME} || \
+                aws ecr create-repository --repository-name ${REPO_NAME}
+              """
+            }
+          }
         }
+
       }
     }
+    /* ---------------------- END PARALLEL BLOCK ------------------------ */
+
 
     stage('Build & Push Image (Kaniko)') {
       steps {
