@@ -2,9 +2,9 @@ FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-# Copy the JAR into /app directory
-COPY target/*.jar /app/app.jar
+COPY target/*.jar /app/
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+CMD ["java", "-jar", "/app/*.jar"]
+
