@@ -1,7 +1,6 @@
 pipeline {
   agent {
     kubernetes {
-      inheritFrom 'kaniko-maven-agent'
       defaultContainer 'maven'
       yaml """
 apiVersion: v1
@@ -11,75 +10,81 @@ metadata:
     jenkins.io/skip-container-readiness: "kaniko"
 spec:
   serviceAccountName: jenkins
-
   containers:
+
   - name: maven
     image: maven:3.9.6-eclipse-temurin-17
     command: ['cat']
     tty: true
     volumeMounts:
-    - name: workspace
-      mountPath: /home/jenkins/agent
+      - name: workspace
+        mountPath: /home/jenkins/agent
 
   - name: aws
     image: amazon/aws-cli:2.11.2
     command: ['cat']
     tty: true
     volumeMounts:
-    - name: workspace
-      mountPath: /workspace
+      - name: workspace
+        mountPath: /home/jenkins/agent
 
   - name: helm
     image: dtzar/helm-kubectl:3.14.0
     command: ['cat']
     tty: true
     volumeMounts:
-    - name: workspace
-      mountPath: /workspace
+      - name: workspace
+        mountPath: /home/jenkins/agent
 
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
     command: ["/busybox/sh"]
     args: ["-c", "sleep 3600"]
+    tty: true
     volumeMounts:
-    - name: kaniko-config
-      mountPath: /kaniko/.docker
-    - name: workspace
-      mountPath: /home/jenkins/agent
+      - name: workspace
+        mountPath: /home/jenkins/agent
+      - name: kaniko-config
+        mountPath: /kaniko/.docker
+
+  - name: jnlp
+    image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
+    args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
+    volumeMounts:
+      - name: workspace
+        mountPath: /home/jenkins/agent
 
   volumes:
-  - name: workspace
-    emptyDir: {}
-  - name: kaniko-config
-    secret:
-      secretName: regcred
+    - name: workspace
+      emptyDir: {}
+    - name: kaniko-config
+      secret:
+        secretName: regcred
 """
     }
   }
-  options {
-    skipDefaultCheckout()    // IMPORTANT FIX
-  }
+
   environment {
-    AWS_REGION = "ap-southeast-1"
-    ECR_REGISTRY = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
-    REPO_NAME = "movie-review"
-    IMAGE_TAG = "${env.BUILD_NUMBER}"
-    FULL_IMAGE = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
+    AWS_REGION    = "ap-southeast-1"
+    ECR_REGISTRY  = "197315783820.dkr.ecr.ap-southeast-1.amazonaws.com"
+    REPO_NAME     = "movie-review"
+    IMAGE_TAG     = "${env.BUILD_NUMBER}"
+    FULL_IMAGE    = "${ECR_REGISTRY}/${REPO_NAME}:${IMAGE_TAG}"
+    APP_DIR       = "javaapp-standalone"
     APP_NAMESPACE = "app"
-    APP_PORT = "5000"
-    APP_DIR = "jenkins/javaapp-standalone"
+    APP_PORT      = "5000"
   }
 
   stages {
 
-    stage('Checkout') {
+    stage('Checkout Source') {
       steps {
         checkout scm
-        sh "echo 'Repo structure:' && ls -R ${APP_DIR}"
+        sh 'ls -R'
       }
     }
 
-    stage('Build Artifact (Maven)') {
+    stage('Maven Build') {
       steps {
         container('maven') {
           dir("${APP_DIR}") {
@@ -89,7 +94,7 @@ spec:
       }
     }
 
-    stage('Prepare ECR') {
+    stage('Ensure ECR Exists') {
       steps {
         container('aws') {
           sh """
@@ -114,7 +119,7 @@ spec:
       }
     }
 
-    stage('Deploy with Helm') {
+    stage('Helm Deploy') {
       steps {
         container('helm') {
           sh """
@@ -129,14 +134,15 @@ spec:
         }
       }
     }
+
   }
 
   post {
     success {
-      echo "Pipeline succeeded → Image pushed: ${FULL_IMAGE}"
+      echo "SUCCESS → Image pushed: ${FULL_IMAGE}"
     }
     failure {
-      echo "Pipeline failed — Check pod logs and Jenkins output."
+      echo "FAILED → Check logs in Maven / Kaniko / Helm containers."
     }
   }
 }
