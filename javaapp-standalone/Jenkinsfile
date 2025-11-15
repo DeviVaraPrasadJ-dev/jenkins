@@ -63,15 +63,22 @@ spec:
       command: ["/busybox/sh"]
       args: ["-c", "sleep 3600"]
       tty: true
-      volumeMounts:
-        - name: kaniko-config
-          mountPath: /kaniko/.docker
-        - name: workspace
-          mountPath: /home/jenkins/agent
+      env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-creds
+              key: aws_access_key_id
 
-    - name: jnlp
-      image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
-      args: ["\$(JENKINS_SECRET)", "\$(JENKINS_NAME)"]
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-creds
+              key: aws_secret_access_key
+
+        - name: AWS_REGION
+          value: "ap-southeast-1"
+
       volumeMounts:
         - name: workspace
           mountPath: /home/jenkins/agent
@@ -79,9 +86,6 @@ spec:
   volumes:
     - name: workspace
       emptyDir: {}
-    - name: kaniko-config
-      secret:
-        secretName: regcred
 """
     }
   }
