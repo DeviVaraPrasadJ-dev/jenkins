@@ -142,27 +142,31 @@ spec:
       }
     }
 
-    stage('Build & Push Image (Kaniko)') {
-      steps {
-        container('kaniko') {
-          // run kaniko executor from the kaniko debug image (executor binary present)
-          sh """
-            # validate Dockerfile exists
-            if [ ! -f /home/jenkins/agent/${APP_DIR}/Dockerfile ]; then
-              echo "ERROR: Dockerfile not found at /home/jenkins/agent/${APP_DIR}/Dockerfile"
-              ls -la /home/jenkins/agent/${APP_DIR} || true
-              exit 1
-            fi
-
-            /kaniko/executor \
-              --context=dir:///home/jenkins/agent/${APP_DIR} \
-              --dockerfile=/home/jenkins/agent/${APP_DIR}/Dockerfile \
-              --destination=${FULL_IMAGE} \
-              --verbosity=info
-          """
+      stage('Build & Push Image (Kaniko)') {
+        steps {
+          container('kaniko') {
+            sh """
+              echo 'Working directory:' 
+              echo ${WORKSPACE}
+              echo 'Listing:'
+              ls -la ${WORKSPACE}/${APP_DIR}
+      
+              # validate Dockerfile exists
+              if [ ! -f ${WORKSPACE}/${APP_DIR}/Dockerfile ]; then
+                 echo "ERROR: Dockerfile not found at ${WORKSPACE}/${APP_DIR}/Dockerfile"
+                 exit 1
+              fi
+      
+              /kaniko/executor \
+                --context=dir://${WORKSPACE}/${APP_DIR} \
+                --dockerfile=${WORKSPACE}/${APP_DIR}/Dockerfile \
+                --destination=${FULL_IMAGE} \
+                --verbosity=info
+            """
+          }
         }
       }
-    }
+
 
     stage('Helm Deploy') {
       steps {
