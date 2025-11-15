@@ -20,8 +20,8 @@ spec:
 
   - name: kaniko
     image: gcr.io/kaniko-project/executor:latest
-    command: ["/bin/sh", "-c", "sleep infinity"]
-    tty: true
+    args:
+      - ""
     volumeMounts:
       - name: kaniko-config
         mountPath: /kaniko/.docker
