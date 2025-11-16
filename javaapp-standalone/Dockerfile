@@ -1,27 +1,23 @@
-# ============================
-# 1) Build stage using Maven
-# ============================
+# ===============================
+# 1. Build Stage
+# ===============================
 FROM maven:3.9.6-eclipse-temurin-21 AS builder
 WORKDIR /build
 
-# Copy source
 COPY pom.xml .
 COPY src ./src
 
-# Build JAR file
 RUN mvn -B -DskipTests clean package
 
-
-# ============================
-# 2) Runtime stage using JRE
-# ============================
+# ===============================
+# 2. Runtime Stage
+# ===============================
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
-# Copy the packaged JAR from builder stage
-COPY --from=builder /build/target/*.jar app.jar
+# COPY the exact JAR file name — NO wildcards → NO kaniko issues
+COPY --from=builder /build/target/java-sample-21-1.0.0.jar /app/app.jar
 
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+EXPOSE 5000
 
-
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
