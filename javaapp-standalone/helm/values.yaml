@@ -18,7 +18,7 @@ ingress:
 service:
   type: NodePort
   port: 5000
-  targetPort: 8080     # Your app container port
+  targetPort: 5000     # Your app container port
   nodePort: 30050      # Any port between 30000–32767
 
 resources: {}
