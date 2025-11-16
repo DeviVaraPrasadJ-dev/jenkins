@@ -189,7 +189,7 @@ spec:
               --set service.port=5000 \
               --set service.type=NodePort \
               --set service.nodePort=30050 \
-              --set service.targetPort=8080
+              --set service.targetPort=5000
           """
         }
       }
